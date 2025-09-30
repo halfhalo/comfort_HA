@@ -34,6 +34,10 @@ from .const import (
     FAN_SPEED_MEDIUM,
     FAN_SPEED_HIGH,
     FAN_SPEED_POWERFUL,
+    FAN_SPEED_QUIET,
+    FAN_SPEED_LOW_MLZ,
+    FAN_SPEED_POWERFUL_MLZ,
+    FAN_SPEED_SUPERPOWERFUL,
     AIR_DIRECTION_AUTO,
     AIR_DIRECTION_HORIZONTAL,
     AIR_DIRECTION_MIDHORIZONTAL,
@@ -350,6 +354,11 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         if num_fan_speeds == 0:
             return None
 
+        # Check if this is an MLZ unit
+        device_data = self.device.device_data
+        model_number = device_data.get("modelNumber", "")
+        is_mlz = model_number.startswith("MLZ")
+
         # Return fan modes based on number of speeds supported
         modes = []
 
@@ -357,16 +366,27 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         if profile_data.get("hasFanSpeedAuto", False):
             modes.append(FAN_SPEED_AUTO)
 
-        if num_fan_speeds >= 1:
-            modes.append(FAN_SPEED_LOW)
-        if num_fan_speeds >= 2:
-            modes.append(FAN_SPEED_MEDIUM)
-        if num_fan_speeds >= 3:
-            modes.append(FAN_SPEED_HIGH)
-
-        # Add powerful mode (4th speed level)
-        if num_fan_speeds >= 4:
-            modes.append(FAN_SPEED_POWERFUL)
+        if is_mlz:
+            # MLZ units use different fan speed values
+            # quiet, low (medium), powerful (high), superPowerful (powerful)
+            if num_fan_speeds >= 1:
+                modes.append(FAN_SPEED_QUIET)
+            if num_fan_speeds >= 2:
+                modes.append(FAN_SPEED_LOW_MLZ)  # Shows as "Medium" in app
+            if num_fan_speeds >= 3:
+                modes.append(FAN_SPEED_POWERFUL_MLZ)  # Shows as "High" in app
+            if num_fan_speeds >= 4:
+                modes.append(FAN_SPEED_SUPERPOWERFUL)  # Shows as "Powerful" in app
+        else:
+            # Standard units
+            if num_fan_speeds >= 1:
+                modes.append(FAN_SPEED_LOW)
+            if num_fan_speeds >= 2:
+                modes.append(FAN_SPEED_MEDIUM)
+            if num_fan_speeds >= 3:
+                modes.append(FAN_SPEED_HIGH)
+            if num_fan_speeds >= 4:
+                modes.append(FAN_SPEED_POWERFUL)
 
         return modes
 

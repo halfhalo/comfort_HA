@@ -29,12 +29,18 @@ OPERATION_MODE_AUTO = "auto"
 OPERATION_MODE_AUTO_COOL = "autoCool"
 OPERATION_MODE_AUTO_HEAT = "autoHeat"
 
-# Fan speeds
+# Fan speeds - Basic units
 FAN_SPEED_AUTO = "auto"
 FAN_SPEED_LOW = "low"
 FAN_SPEED_MEDIUM = "medium"
 FAN_SPEED_HIGH = "high"
 FAN_SPEED_POWERFUL = "superHigh"
+
+# Fan speeds - MLZ units
+FAN_SPEED_QUIET = "quiet"
+FAN_SPEED_LOW_MLZ = "low"  # Maps to "Medium" in app
+FAN_SPEED_POWERFUL_MLZ = "powerful"  # Maps to "High" in app
+FAN_SPEED_SUPERPOWERFUL = "superPowerful"  # Maps to "Powerful" in app
 
 # Air direction
 AIR_DIRECTION_AUTO = "auto"
