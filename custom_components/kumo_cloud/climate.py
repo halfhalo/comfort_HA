@@ -36,6 +36,9 @@ from .const import (
     FAN_SPEED_POWERFUL,
     AIR_DIRECTION_AUTO,
     AIR_DIRECTION_HORIZONTAL,
+    AIR_DIRECTION_MIDHORIZONTAL,
+    AIR_DIRECTION_MIDPOINT,
+    AIR_DIRECTION_MIDVERTICAL,
     AIR_DIRECTION_VERTICAL,
     AIR_DIRECTION_SWING,
 )
@@ -57,10 +60,21 @@ KUMO_TO_HVAC_MODE = {
 # Reverse mapping
 HVAC_TO_KUMO_MODE = {v: k for k, v in KUMO_TO_HVAC_MODE.items()}
 
-# Air direction mappings
-KUMO_AIR_DIRECTIONS = [
+# Air direction mappings - basic units
+KUMO_AIR_DIRECTIONS_BASIC = [
     AIR_DIRECTION_AUTO,
     AIR_DIRECTION_HORIZONTAL,
+    AIR_DIRECTION_VERTICAL,
+    AIR_DIRECTION_SWING,
+]
+
+# Air direction mappings - MLZ units (1-way ceiling cassette)
+KUMO_AIR_DIRECTIONS_MLZ = [
+    AIR_DIRECTION_AUTO,
+    AIR_DIRECTION_HORIZONTAL,
+    AIR_DIRECTION_MIDHORIZONTAL,
+    AIR_DIRECTION_MIDPOINT,
+    AIR_DIRECTION_MIDVERTICAL,
     AIR_DIRECTION_VERTICAL,
     AIR_DIRECTION_SWING,
 ]
@@ -377,7 +391,16 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         if profile_data.get("hasVaneDir", False) or profile_data.get(
             "hasVaneSwing", False
         ):
-            modes.extend(KUMO_AIR_DIRECTIONS)
+            # Check if this is an MLZ unit (1-way ceiling cassette)
+            device_data = self.device.device_data
+            model_number = device_data.get("modelNumber", "")
+
+            if model_number.startswith("MLZ"):
+                # MLZ units support more granular vane positions
+                modes.extend(KUMO_AIR_DIRECTIONS_MLZ)
+            else:
+                # Other units use basic air directions
+                modes.extend(KUMO_AIR_DIRECTIONS_BASIC)
 
         return modes if modes else None
 
