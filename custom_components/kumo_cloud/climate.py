@@ -89,7 +89,6 @@ async def async_setup_entry(
 class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
     """Representation of a Kumo Cloud climate device."""
 
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_has_entity_name = True
     _attr_name = None
 
@@ -132,6 +131,32 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         self._attr_supported_features = features
 
     @property
+    def temperature_unit(self) -> str:
+        """Return the unit of measurement used by the platform."""
+        return self.hass.config.units.temperature_unit
+
+    def _celsius_to_user_unit(self, celsius_temp: float | None) -> float | None:
+        """Convert Celsius temperature to user's configured unit, rounding to nearest whole degree."""
+        if celsius_temp is None:
+            return None
+
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+            fahrenheit = (celsius_temp * 9 / 5) + 32
+            return round(fahrenheit)
+
+        return celsius_temp
+
+    def _user_unit_to_celsius(self, temp: float | None) -> float | None:
+        """Convert user's temperature unit to Celsius."""
+        if temp is None:
+            return None
+
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+            return (temp - 32) * 5 / 9
+
+        return temp
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         zone_data = self.device.zone_data
@@ -152,7 +177,8 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
         adapter = self.device.zone_data.get("adapter", {})
-        return adapter.get("roomTemp")
+        celsius_temp = adapter.get("roomTemp")
+        return self._celsius_to_user_unit(celsius_temp)
 
     @property
     def target_temperature(self) -> float | None:
@@ -161,15 +187,16 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         device_data = self.device.device_data
         hvac_mode = self.hvac_mode
 
+        celsius_temp = None
         if hvac_mode == HVACMode.COOL:
-            return device_data.get("spCool", adapter.get("spCool"))
+            celsius_temp = device_data.get("spCool", adapter.get("spCool"))
         elif hvac_mode == HVACMode.HEAT:
-            return device_data.get("spHeat", adapter.get("spHeat"))
+            celsius_temp = device_data.get("spHeat", adapter.get("spHeat"))
         elif hvac_mode == HVACMode.HEAT_COOL:
             # For auto mode, return None since we use target_temperature_low/high
             return None
 
-        return None
+        return self._celsius_to_user_unit(celsius_temp)
 
     @property
     def target_temperature_low(self) -> float | None:
@@ -179,7 +206,8 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
 
         adapter = self.device.zone_data.get("adapter", {})
         device_data = self.device.device_data
-        return device_data.get("spHeat", adapter.get("spHeat"))
+        celsius_temp = device_data.get("spHeat", adapter.get("spHeat"))
+        return self._celsius_to_user_unit(celsius_temp)
 
     @property
     def target_temperature_high(self) -> float | None:
@@ -189,7 +217,8 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
 
         adapter = self.device.zone_data.get("adapter", {})
         device_data = self.device.device_data
-        return device_data.get("spCool", adapter.get("spCool"))
+        celsius_temp = device_data.get("spCool", adapter.get("spCool"))
+        return self._celsius_to_user_unit(celsius_temp)
 
     @property
     def hvac_mode(self) -> HVACMode:
@@ -356,27 +385,33 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
     def min_temp(self) -> float:
         """Return minimum temperature."""
         profile = self.device.profile_data
+        celsius_min = 16.0
         if profile:
             profile_data = profile[0] if isinstance(profile, list) else profile
             min_setpoints = profile_data.get("minimumSetPoints", {})
             # Return the minimum of heat and cool setpoints
-            return min(min_setpoints.get("heat", 16), min_setpoints.get("cool", 16))
-        return 16.0
+            celsius_min = min(min_setpoints.get("heat", 16), min_setpoints.get("cool", 16))
+        return self._celsius_to_user_unit(celsius_min) or 16.0
 
     @property
     def max_temp(self) -> float:
         """Return maximum temperature."""
         profile = self.device.profile_data
+        celsius_max = 30.0
         if profile:
             profile_data = profile[0] if isinstance(profile, list) else profile
             max_setpoints = profile_data.get("maximumSetPoints", {})
             # Return the maximum of heat and cool setpoints
-            return max(max_setpoints.get("heat", 30), max_setpoints.get("cool", 30))
-        return 30.0
+            celsius_max = max(max_setpoints.get("heat", 30), max_setpoints.get("cool", 30))
+        return self._celsius_to_user_unit(celsius_max) or 30.0
 
     @property
     def target_temperature_step(self) -> float:
         """Return the supported step of target temperature."""
+        # For Fahrenheit, use 1 degree steps (rounded)
+        # For Celsius, keep 0.5 degree steps
+        if self.temperature_unit == UnitOfTemperature.FAHRENHEIT:
+            return 1.0
         return 0.5  # Kumo Cloud typically supports 0.5 degree steps
 
     @property
@@ -421,30 +456,35 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         target_temp_low = kwargs.get("target_temp_low")
         target_temp_high = kwargs.get("target_temp_high")
 
+        # Convert temperatures from user unit to Celsius
+        target_temp_celsius = self._user_unit_to_celsius(target_temp)
+        target_temp_low_celsius = self._user_unit_to_celsius(target_temp_low)
+        target_temp_high_celsius = self._user_unit_to_celsius(target_temp_high)
+
         hvac_mode = self.hvac_mode
         commands = {}
 
         adapter = self.device.zone_data.get("adapter", {})
         device_data = self.device.device_data
 
-        if hvac_mode == HVACMode.COOL and target_temp is not None:
-            commands["spCool"] = target_temp
+        if hvac_mode == HVACMode.COOL and target_temp_celsius is not None:
+            commands["spCool"] = target_temp_celsius
             # Maintain heat setpoint
             sp_heat = device_data.get("spHeat", adapter.get("spHeat"))
             if sp_heat is not None:
                 commands["spHeat"] = sp_heat
-        elif hvac_mode == HVACMode.HEAT and target_temp is not None:
-            commands["spHeat"] = target_temp
+        elif hvac_mode == HVACMode.HEAT and target_temp_celsius is not None:
+            commands["spHeat"] = target_temp_celsius
             # Maintain cool setpoint
             sp_cool = device_data.get("spCool", adapter.get("spCool"))
             if sp_cool is not None:
                 commands["spCool"] = sp_cool
         elif hvac_mode == HVACMode.HEAT_COOL:
             # For auto mode, use target_temp_low and target_temp_high if provided
-            if target_temp_low is not None:
-                commands["spHeat"] = target_temp_low
-            if target_temp_high is not None:
-                commands["spCool"] = target_temp_high
+            if target_temp_low_celsius is not None:
+                commands["spHeat"] = target_temp_low_celsius
+            if target_temp_high_celsius is not None:
+                commands["spCool"] = target_temp_high_celsius
 
         if commands:
             await self._send_command_and_refresh(commands)
