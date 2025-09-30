@@ -484,6 +484,23 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         target_temp_low_celsius = self._user_unit_to_celsius(target_temp_low)
         target_temp_high_celsius = self._user_unit_to_celsius(target_temp_high)
 
+        # Get device min/max limits in Celsius
+        profile = self.device.profile_data
+        if profile:
+            profile_data = profile[0] if isinstance(profile, list) else profile
+            min_setpoints = profile_data.get("minimumSetPoints", {})
+            max_setpoints = profile_data.get("maximumSetPoints", {})
+            min_heat = min_setpoints.get("heat", 10)
+            max_heat = max_setpoints.get("heat", 31)
+            min_cool = min_setpoints.get("cool", 16)
+            max_cool = max_setpoints.get("cool", 31)
+        else:
+            # Fallback defaults
+            min_heat = 10
+            max_heat = 31
+            min_cool = 16
+            max_cool = 31
+
         hvac_mode = self.hvac_mode
         commands = {}
 
@@ -491,13 +508,15 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         device_data = self.device.device_data
 
         if hvac_mode == HVACMode.COOL and target_temp_celsius is not None:
-            commands["spCool"] = target_temp_celsius
+            # Clamp to valid range
+            commands["spCool"] = max(min_cool, min(max_cool, target_temp_celsius))
             # Maintain heat setpoint
             sp_heat = device_data.get("spHeat", adapter.get("spHeat"))
             if sp_heat is not None:
                 commands["spHeat"] = sp_heat
         elif hvac_mode == HVACMode.HEAT and target_temp_celsius is not None:
-            commands["spHeat"] = target_temp_celsius
+            # Clamp to valid range
+            commands["spHeat"] = max(min_heat, min(max_heat, target_temp_celsius))
             # Maintain cool setpoint
             sp_cool = device_data.get("spCool", adapter.get("spCool"))
             if sp_cool is not None:
@@ -505,9 +524,9 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         elif hvac_mode == HVACMode.HEAT_COOL:
             # For auto mode, use target_temp_low and target_temp_high if provided
             if target_temp_low_celsius is not None:
-                commands["spHeat"] = target_temp_low_celsius
+                commands["spHeat"] = max(min_heat, min(max_heat, target_temp_low_celsius))
             if target_temp_high_celsius is not None:
-                commands["spCool"] = target_temp_high_celsius
+                commands["spCool"] = max(min_cool, min(max_cool, target_temp_high_celsius))
 
         if commands:
             await self._send_command_and_refresh(commands)
