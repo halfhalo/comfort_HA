@@ -27,6 +27,8 @@ from .const import (
     OPERATION_MODE_DRY,
     OPERATION_MODE_VENT,
     OPERATION_MODE_AUTO,
+    OPERATION_MODE_AUTO_COOL,
+    OPERATION_MODE_AUTO_HEAT,
     FAN_SPEED_AUTO,
     FAN_SPEED_LOW,
     FAN_SPEED_MEDIUM,
@@ -46,6 +48,8 @@ KUMO_TO_HVAC_MODE = {
     OPERATION_MODE_DRY: HVACMode.DRY,
     OPERATION_MODE_VENT: HVACMode.FAN_ONLY,
     OPERATION_MODE_AUTO: HVACMode.HEAT_COOL,
+    OPERATION_MODE_AUTO_COOL: HVACMode.COOL,
+    OPERATION_MODE_AUTO_HEAT: HVACMode.HEAT,
 }
 
 # Reverse mapping
@@ -230,10 +234,10 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
             return HVACAction.OFF
 
         # If device is on and has a valid operation mode, show it as active
-        if operation_mode == OPERATION_MODE_HEAT:
+        if operation_mode in (OPERATION_MODE_HEAT, OPERATION_MODE_AUTO_HEAT):
             # For heating mode, show as heating if power is on
             return HVACAction.HEATING
-        elif operation_mode == OPERATION_MODE_COOL:
+        elif operation_mode in (OPERATION_MODE_COOL, OPERATION_MODE_AUTO_COOL):
             # For cooling mode, show as cooling if power is on
             return HVACAction.COOLING
         elif operation_mode == OPERATION_MODE_DRY:
