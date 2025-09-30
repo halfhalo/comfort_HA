@@ -158,12 +158,31 @@ class KumoCloudAPI:
             async with asyncio.timeout(10):
                 if method.upper() == "GET":
                     async with self.session.get(url, headers=headers) as response:
+                        if response.status >= 400:
+                            response_text = await response.text()
+                            _LOGGER.error(
+                                "HTTP %d error for %s %s: %s",
+                                response.status,
+                                method,
+                                endpoint,
+                                response_text,
+                            )
                         response.raise_for_status()
                         return await response.json()
                 elif method.upper() == "POST":
                     async with self.session.post(
                         url, headers=headers, json=data
                     ) as response:
+                        if response.status >= 400:
+                            response_text = await response.text()
+                            _LOGGER.error(
+                                "HTTP %d error for %s %s with data %s: %s",
+                                response.status,
+                                method,
+                                endpoint,
+                                json.dumps(data, indent=2) if data else "None",
+                                response_text,
+                            )
                         response.raise_for_status()
                         if response.content_type == "application/json":
                             return await response.json()
@@ -174,6 +193,13 @@ class KumoCloudAPI:
         except ClientResponseError as err:
             if err.status == 401:
                 raise KumoCloudAuthError("Authentication failed") from err
+            if err.status == 400:
+                _LOGGER.error(
+                    "Bad request (400) for %s %s with data: %s",
+                    method,
+                    endpoint,
+                    json.dumps(data, indent=2) if data else "None",
+                )
             raise KumoCloudConnectionError(f"HTTP error: {err.status}") from err
 
     async def get_account_info(self) -> dict[str, Any]:
