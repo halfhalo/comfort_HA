@@ -493,6 +493,12 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
 
                 await self._send_command_and_refresh(commands)
 
+    def _round_to_half(self, temp: float | None) -> float | None:
+        """Round temperature to nearest 0.5°C."""
+        if temp is None:
+            return None
+        return round(temp * 2) / 2
+
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
         target_temp = kwargs.get(ATTR_TEMPERATURE)
@@ -503,6 +509,11 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         target_temp_celsius = self._user_unit_to_celsius(target_temp)
         target_temp_low_celsius = self._user_unit_to_celsius(target_temp_low)
         target_temp_high_celsius = self._user_unit_to_celsius(target_temp_high)
+
+        # Round to nearest 0.5°C
+        target_temp_celsius = self._round_to_half(target_temp_celsius)
+        target_temp_low_celsius = self._round_to_half(target_temp_low_celsius)
+        target_temp_high_celsius = self._round_to_half(target_temp_high_celsius)
 
         # Get device min/max limits in Celsius
         profile = self.device.profile_data

@@ -255,8 +255,8 @@ class KumoCloudDevice:
         """Send a command to the device and refresh status."""
         try:
             # Send the command
-            await self.coordinator.api.send_command(self.device_serial, commands)
-            _LOGGER.debug("Sent command to device %s: %s", self.device_serial, commands)
+            await self.coordinator.api.send_command(self.device_serial, commands, self.name)
+            _LOGGER.debug("Sent command to %s (%s): %s", self.name, self.device_serial, commands)
 
             # Wait a moment for the command to be processed
             await asyncio.sleep(1)
@@ -266,6 +266,6 @@ class KumoCloudDevice:
 
         except Exception as err:
             _LOGGER.error(
-                "Failed to send command to device %s: %s", self.device_serial, err
+                "Failed to send command to %s (%s): %s", self.name, self.device_serial, err
             )
             raise

@@ -170,16 +170,23 @@ class KumoCloudAPI:
                         response.raise_for_status()
                         return await response.json()
                 elif method.upper() == "POST":
+                    # Extract zone name for logging (if present), remove before sending
+                    zone_name = None
+                    if data and "_zone_name" in data:
+                        zone_name = data.pop("_zone_name")
+
                     async with self.session.post(
                         url, headers=headers, json=data
                     ) as response:
                         if response.status >= 400:
                             response_text = await response.text()
+                            zone_info = f" [{zone_name}]" if zone_name else ""
                             _LOGGER.error(
-                                "HTTP %d error for %s %s with data %s: %s",
+                                "HTTP %d error for %s %s%s with data %s: %s",
                                 response.status,
                                 method,
                                 endpoint,
+                                zone_info,
                                 json.dumps(data, indent=2) if data else "None",
                                 response_text,
                             )
@@ -193,13 +200,7 @@ class KumoCloudAPI:
         except ClientResponseError as err:
             if err.status == 401:
                 raise KumoCloudAuthError("Authentication failed") from err
-            if err.status == 400:
-                _LOGGER.error(
-                    "Bad request (400) for %s %s with data: %s",
-                    method,
-                    endpoint,
-                    json.dumps(data, indent=2) if data else "None",
-                )
+            # Note: 400 errors are already logged above before raise_for_status()
             raise KumoCloudConnectionError(f"HTTP error: {err.status}") from err
 
     async def get_account_info(self) -> dict[str, Any]:
@@ -223,8 +224,11 @@ class KumoCloudAPI:
         return await self._request("GET", f"/devices/{device_serial}/profile")
 
     async def send_command(
-        self, device_serial: str, commands: dict[str, Any]
+        self, device_serial: str, commands: dict[str, Any], zone_name: str | None = None
     ) -> dict[str, Any]:
         """Send command to device."""
         data = {"deviceSerial": device_serial, "commands": commands}
+        # Store zone name for logging purposes
+        if zone_name:
+            data["_zone_name"] = zone_name
         return await self._request("POST", "/devices/send-command", data)
