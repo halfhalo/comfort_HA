@@ -432,8 +432,10 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         if profile:
             profile_data = profile[0] if isinstance(profile, list) else profile
             min_setpoints = profile_data.get("minimumSetPoints", {})
-            # Return the minimum of heat and cool setpoints
-            celsius_min = min(min_setpoints.get("heat", 16), min_setpoints.get("cool", 16))
+            # Use the cool minimum as the overall minimum (more restrictive for UI)
+            # Heat minimum can be lower (e.g., 10°C) but we use cool minimum (16°C)
+            # to prevent users from setting temperatures that would be invalid for cooling
+            celsius_min = min_setpoints.get("cool", 16)
         return self._celsius_to_user_unit(celsius_min) or 16.0
 
     @property
@@ -444,8 +446,10 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         if profile:
             profile_data = profile[0] if isinstance(profile, list) else profile
             max_setpoints = profile_data.get("maximumSetPoints", {})
-            # Return the maximum of heat and cool setpoints
-            celsius_max = max(max_setpoints.get("heat", 30), max_setpoints.get("cool", 30))
+            # Use the heat maximum as the overall maximum (more restrictive for UI)
+            # Cool maximum can be higher (e.g., 31°C) but we use heat maximum (28°C)
+            # to prevent users from setting temperatures that would be invalid for heating
+            celsius_max = max_setpoints.get("heat", 30)
         return self._celsius_to_user_unit(celsius_max) or 30.0
 
     @property
