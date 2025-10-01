@@ -462,6 +462,31 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         return 0.5  # Kumo Cloud typically supports 0.5 degree steps
 
     @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return entity specific state attributes."""
+        profile = self.device.profile_data
+        if not profile:
+            return {}
+
+        profile_data = profile[0] if isinstance(profile, list) else profile
+        min_setpoints = profile_data.get("minimumSetPoints", {})
+        max_setpoints = profile_data.get("maximumSetPoints", {})
+
+        # Get Celsius values
+        min_heat_c = min_setpoints.get("heat", 10)
+        max_heat_c = max_setpoints.get("heat", 28)
+        min_cool_c = min_setpoints.get("cool", 16)
+        max_cool_c = max_setpoints.get("cool", 31)
+
+        # Convert to user unit
+        return {
+            "min_heat_temp": self._celsius_to_user_unit(min_heat_c),
+            "max_heat_temp": self._celsius_to_user_unit(max_heat_c),
+            "min_cool_temp": self._celsius_to_user_unit(min_cool_c),
+            "max_cool_temp": self._celsius_to_user_unit(max_cool_c),
+        }
+
+    @property
     def available(self) -> bool:
         """Return True if entity is available."""
         return self.device.available and self.coordinator.last_update_success
@@ -475,6 +500,12 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target HVAC mode."""
+        # Check if mode is already set
+        current_mode = self.hvac_mode
+        if current_mode == hvac_mode:
+            _LOGGER.debug("%s: HVAC mode already set to %s, skipping", self.device.name, hvac_mode)
+            return
+
         if hvac_mode == HVACMode.OFF:
             await self._send_command_and_refresh({"operationMode": OPERATION_MODE_OFF})
         else:
@@ -542,36 +573,64 @@ class KumoCloudClimate(CoordinatorEntity, ClimateEntity):
         adapter = self.device.zone_data.get("adapter", {})
         device_data = self.device.device_data
 
+        # Get current setpoints
+        current_sp_cool = device_data.get("spCool", adapter.get("spCool"))
+        current_sp_heat = device_data.get("spHeat", adapter.get("spHeat"))
+
         if hvac_mode == HVACMode.COOL and target_temp_celsius is not None:
             # Clamp to valid range
-            commands["spCool"] = max(min_cool, min(max_cool, target_temp_celsius))
-            # Maintain heat setpoint
-            sp_heat = device_data.get("spHeat", adapter.get("spHeat"))
-            if sp_heat is not None:
-                commands["spHeat"] = sp_heat
+            new_sp_cool = max(min_cool, min(max_cool, target_temp_celsius))
+            # Check if update is needed (0.25°C tolerance)
+            if current_sp_cool is None or abs(new_sp_cool - current_sp_cool) > 0.25:
+                commands["spCool"] = new_sp_cool
+                # Maintain heat setpoint
+                if current_sp_heat is not None:
+                    commands["spHeat"] = current_sp_heat
+            else:
+                _LOGGER.debug("%s: Cool setpoint already at %.1f°C, skipping", self.device.name, new_sp_cool)
         elif hvac_mode == HVACMode.HEAT and target_temp_celsius is not None:
             # Clamp to valid range
-            commands["spHeat"] = max(min_heat, min(max_heat, target_temp_celsius))
-            # Maintain cool setpoint
-            sp_cool = device_data.get("spCool", adapter.get("spCool"))
-            if sp_cool is not None:
-                commands["spCool"] = sp_cool
+            new_sp_heat = max(min_heat, min(max_heat, target_temp_celsius))
+            # Check if update is needed (0.25°C tolerance)
+            if current_sp_heat is None or abs(new_sp_heat - current_sp_heat) > 0.25:
+                commands["spHeat"] = new_sp_heat
+                # Maintain cool setpoint
+                if current_sp_cool is not None:
+                    commands["spCool"] = current_sp_cool
+            else:
+                _LOGGER.debug("%s: Heat setpoint already at %.1f°C, skipping", self.device.name, new_sp_heat)
         elif hvac_mode == HVACMode.HEAT_COOL:
             # For auto mode, use target_temp_low and target_temp_high if provided
             if target_temp_low_celsius is not None:
-                commands["spHeat"] = max(min_heat, min(max_heat, target_temp_low_celsius))
+                new_sp_heat = max(min_heat, min(max_heat, target_temp_low_celsius))
+                if current_sp_heat is None or abs(new_sp_heat - current_sp_heat) > 0.25:
+                    commands["spHeat"] = new_sp_heat
             if target_temp_high_celsius is not None:
-                commands["spCool"] = max(min_cool, min(max_cool, target_temp_high_celsius))
+                new_sp_cool = max(min_cool, min(max_cool, target_temp_high_celsius))
+                if current_sp_cool is None or abs(new_sp_cool - current_sp_cool) > 0.25:
+                    commands["spCool"] = new_sp_cool
 
         if commands:
             await self._send_command_and_refresh(commands)
+        else:
+            _LOGGER.debug("%s: No temperature changes needed", self.device.name)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set new target fan mode."""
+        # Check if fan mode is already set
+        current_fan_mode = self.fan_mode
+        if current_fan_mode == fan_mode:
+            _LOGGER.debug("%s: Fan mode already set to %s, skipping", self.device.name, fan_mode)
+            return
         await self._send_command_and_refresh({"fanSpeed": fan_mode})
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set new target swing mode."""
+        # Check if swing mode is already set
+        current_swing_mode = self.swing_mode
+        if current_swing_mode == swing_mode:
+            _LOGGER.debug("%s: Swing mode already set to %s, skipping", self.device.name, swing_mode)
+            return
         await self._send_command_and_refresh({"airDirection": swing_mode})
 
     async def async_turn_on(self) -> None:
